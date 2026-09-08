@@ -1,6 +1,7 @@
 /** Frame's platform-independent edit model. No DOM, transport, or persistence. */
 export type TimedFocus = { time: number; duration: number };
 export type Focus = TimedFocus & { x: number; y: number; zoom: number };
+export type TapStyle = { color?: string; size?: number; bloom?: number };
 export type Tap = {
   time: number;
   x: number;

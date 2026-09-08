@@ -697,8 +697,12 @@ struct ExportOptions {
     end: Option<f64>,
     #[serde(default)]
     edits: editor::Edits,
+    #[serde(default = "default_export_volume")]
+    volume: f64,
 }
+fn default_export_volume() -> f64 { 1.0 }
 fn export_filter(o: &ExportOptions) -> Result<String, String> {
+    if !o.volume.is_finite() || !(0.0..=1.0).contains(&o.volume) { return Err("Volume must be between 0 and 100%.".into()); }
     if !["#c6b8a6", "#b8cbbb", "#aebfda", "#d5b5bb", "#202124"].contains(&o.color.as_str())
         || o.padding > 200
         || !o.start.is_finite()
@@ -759,8 +763,12 @@ async fn export_capture(app: tauri::AppHandle, options: ExportOptions) -> Result
                 c.args(["-t", &(end - options.start).to_string()]);
             }
         }
-        let (graph, spliced_audio) = editor::splice_effects(&options.edits, &info, options.start, options.end, &filter)?;
-        c.args(["-filter_complex", &graph, "-map", "[outv]", "-map", if spliced_audio { "[outa]" } else { "0:a?" }]);
+        let (mut graph, spliced_audio) = editor::splice_effects(&options.edits, &info, options.start, options.end, &filter)?;
+        let audio_map = if info.audio && options.volume != 1.0 {
+            graph.push_str(&format!(";{}volume={}[volumeout]", if spliced_audio { "[outa]" } else { "[0:a]" }, options.volume));
+            "[volumeout]"
+        } else if spliced_audio { "[outa]" } else { "0:a?" };
+        c.args(["-filter_complex", &graph, "-map", "[outv]", "-map", audio_map]);
         if is_image {
             c.args(["-frames:v", "1"]);
         } else {
@@ -858,7 +866,7 @@ mod tests {
     }
     #[test]
     fn native_export_preserves_source_pixels_without_background() {
-        let options = ExportOptions { path: String::new(), color: "#c6b8a6".into(), aspect: "native".into(), padding: 200, start: 0., end: None, edits: editor::Edits::default() };
+        let options = ExportOptions { path: String::new(), color: "#c6b8a6".into(), aspect: "native".into(), padding: 200, start: 0., end: None, volume: 1.0, edits: editor::Edits::default() };
         assert_eq!(export_filter(&options).unwrap(), "setsar=1");
         let Some(ffmpeg) = resolve("ffmpeg", "") else { return; };
         let mut render = command(ffmpeg);
@@ -898,7 +906,7 @@ mod tests {
             padding: 80,
             start: 0.,
             end: Some(5.),
-            edits: editor::Edits::default(),
+            volume: 1.0, edits: editor::Edits::default(),
         };
         assert!(export_filter(&o).unwrap().contains("pad=1920:1080"));
         o.end = Some(0.);

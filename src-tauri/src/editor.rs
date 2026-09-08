@@ -14,11 +14,21 @@ pub struct Tap {
     pub time: f64,
     pub x: f64,
     pub y: f64,
+    #[serde(default)]
+    pub duration: Option<f64>,
+}
+#[derive(Serialize, Deserialize, Default, Clone)]
+pub struct TapStyle {
+    pub color: Option<String>,
+    pub size: Option<f64>,
+    pub bloom: Option<f64>,
 }
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct Edits {
     pub focus: Vec<Focus>,
     pub taps: Vec<Tap>,
+    #[serde(default, rename = "tapStyle")]
+    pub tap_style: Option<TapStyle>,
     #[serde(default)]
     pub segments: Option<Vec<Segment>>,
 }
@@ -84,6 +94,13 @@ pub async fn media_info(app: tauri::AppHandle, path: String) -> Result<MediaInfo
         .map_err(|e| e.to_string())?
 }
 pub fn validate(edits: &Edits) -> Result<(), String> {
+    if let Some(style) = &edits.tap_style {
+        if style.color.as_ref().is_some_and(|c| c.len()!=7 || !c.starts_with('#') || !c[1..].bytes().all(|b| b.is_ascii_hexdigit()))
+          || style.size.is_some_and(|n| !n.is_finite() || !(12.0..=100.0).contains(&n))
+          || style.bloom.is_some_and(|n| !n.is_finite() || !(0.0..=1.0).contains(&n)) {
+            return Err("Invalid tap styling.".into());
+        }
+    }
     if let Some(segments) = &edits.segments {
         if segments.is_empty() || segments.len() > 100 {
             return Err("Keep between 1 and 100 video segments.".into());
@@ -118,7 +135,7 @@ pub fn validate(edits: &Edits) -> Result<(), String> {
         }
     }
     for t in &edits.taps {
-        if !t.time.is_finite() || t.time < 0. || !unit(t.x) || !unit(t.y) {
+        if !t.time.is_finite() || t.time < 0. || !unit(t.x) || !unit(t.y) || t.duration.is_some_and(|d| !d.is_finite() || !(0.1..=20.).contains(&d)) {
             return Err("Invalid tap highlight.".into());
         }
     }
@@ -156,25 +173,27 @@ pub fn effects(edits: &Edits, info: &MediaInfo, start: f64, base: &str) -> Resul
     validate(edits)?;
     let mut graph = String::new();
     let mut input = "0:v".to_string();
-    if !edits.taps.is_empty() {
-        let mut x = "-200".to_string();
-        let mut y = "-200".to_string();
-        let mut enables = Vec::new();
-        for t in &edits.taps {
-            let a = t.time - start;
-            let b = a + 0.45;
-            x = format!(
-                "if(between(t,{a},{b}),{}, {x})",
-                t.x * info.width as f64 - 40.
-            );
-            y = format!(
-                "if(between(t,{a},{b}),{}, {y})",
-                t.y * info.height as f64 - 40.
-            );
-            enables.push(format!("between(t,{a},{b})"));
-        }
-        graph.push_str(&format!("color=c=black@0:s=80x80:r=60,format=rgba,geq=r=255:g=224:b=187:a='if(between(hypot(X-40,Y-40),27,33),220,if(lt(hypot(X-40,Y-40),27),60,0))'[ring];[0:v][ring]overlay=x='{x}':y='{y}':enable='{}':shortest=1[tapped];",enables.join("+")));
-        input = "tapped".into();
+    let style=edits.tap_style.clone().unwrap_or_default();
+    let color=style.color.as_deref().unwrap_or("#ffe0bb");
+    let red=u8::from_str_radix(&color[1..3],16).unwrap();
+    let green=u8::from_str_radix(&color[3..5],16).unwrap();
+    let blue=u8::from_str_radix(&color[5..7],16).unwrap();
+    let radius=style.size.unwrap_or(30.);
+    let bloom=style.bloom.unwrap_or(0.5);
+    let side=((radius*6.).ceil() as u32+1)/2*2;
+    let center=side as f64/2.;
+    for (i,t) in edits.taps.iter().enumerate() {
+        let a=t.time-start;
+        let duration=t.duration.unwrap_or(0.45);
+        let b=a+duration;
+        if b<=0. { continue; }
+        let x=t.x*info.width as f64-center;
+        let y=t.y*info.height as f64-center;
+        let glow=(radius*bloom).max(1.);
+        let distance=format!("abs(hypot(X-{center},Y-{center})-{radius}*(0.75+0.5*T/{duration}))");
+        let alpha=format!("(1-min(T/{duration},1))*min(255,if(lt({distance},2),230,0)+{bloom}*150*exp(-pow({distance}/{glow},2)))");
+        graph.push_str(&format!("color=c=black@0:s={side}x{side}:r=60:d={duration},format=rgba,geq=r={red}:g={green}:b={blue}:a='{alpha}',setpts=PTS+{a}/TB[ring{i}];[{input}][ring{i}]overlay=x={x}:y={y}:enable='between(t,{a},{b})':eof_action=pass:repeatlast=0[tapped{i}];"));
+        input=format!("tapped{i}");
     }
     if !edits.focus.is_empty() {
         let time = format!("(on/60+{start})");
@@ -277,6 +296,7 @@ mod tests {
         };
         for audio in [false, true] {
             let edits = Edits {
+            tap_style: None,
                 focus: vec![],
                 taps: vec![],
                 segments: Some(vec![
@@ -399,6 +419,7 @@ mod tests {
             zoom: 1.7,
         };
         let e = Edits {
+            tap_style: None,
             segments: None,
             focus: vec![f.clone(), f],
             taps: vec![],
@@ -408,6 +429,7 @@ mod tests {
     #[test]
     fn effects_use_original_timeline_after_trim() {
         let e = Edits {
+            tap_style: None,
             segments: None,
             focus: vec![Focus {
                 time: 4.,
@@ -417,6 +439,7 @@ mod tests {
                 zoom: 2.,
             }],
             taps: vec![Tap {
+                duration: None,
                 time: 5.,
                 x: 0.2,
                 y: 0.8,
@@ -445,6 +468,7 @@ mod tests {
         };
         let path = std::env::temp_dir().join(format!("frame-effects-{}.mp4", crate::stamp()));
         let e = Edits {
+            tap_style: None,
             segments: None,
             focus: vec![Focus {
                 time: 0.5,
@@ -454,6 +478,7 @@ mod tests {
                 zoom: 1.8,
             }],
             taps: vec![Tap {
+                duration: None,
                 time: 1.,
                 x: 0.4,
                 y: 0.6,

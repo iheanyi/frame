@@ -1,3 +1,4 @@
+import { EditAppearance } from './EditAppearance';
 import { primeVideoFrame } from "./video-primer";
 import { TimelineDock } from './TimelineDock';
 import { useEffect, useRef, useState, type CSSProperties } from "react";
@@ -15,8 +16,8 @@ import {
   TrashIcon,
 } from "@heroicons/react/16/solid";
 type Capture = { path: string; name: string; kind: string; bytes: number };
-import { clamp, focusCrop, type Focus, type Tap } from "../packages/editor-core/index.ts";
-type Edits = { focus: Focus[]; taps: Tap[]; segments?: Segment[] | null };
+import { clamp, focusCrop, type Focus, type Tap, type TapStyle } from "../packages/editor-core/index.ts";
+type Edits = { focus: Focus[]; taps: Tap[]; tapStyle?: TapStyle; segments?: Segment[] | null };
 type Info = { width: number; height: number; duration: number; audio: boolean };
 const palette = ["#c6b8a6", "#b8cbbb", "#aebfda", "#d5b5bb", "#202124"];
 const names = ["Sand", "Sage", "Mist", "Rose", "Graphite"];
@@ -34,6 +35,7 @@ export function CaptureEditor({
     image = useRef<HTMLImageElement | null>(null),
     frame = useRef(0);
   const editorRoot = useRef<HTMLElement>(null);
+  const [tapsSelected,setTapsSelected]=useState(false);
   useEffect(() => {
     const root = editorRoot.current;
     if (!root) return;
@@ -68,8 +70,11 @@ export function CaptureEditor({
     } | null>(null),
     [exporting, setExporting] = useState(false),
     [status, setStatus] = useState("");
+  useEffect(()=>{if(selected)setTapsSelected(false)},[selected]);
   const [mediaError, setMediaError] = useState("");
-  const [styled, setStyled] = useState(false);
+  const [styled, setStyled] = useState(true);
+  const [volume,setVolume]=useState(1);
+  useEffect(()=>{video.current.volume=volume},[volume]);
   const [originalBusy, setOriginalBusy] = useState(false);
   const [, setSaveStatus] = useState("Loading project…");
   const [selectedSegment, setSelectedSegment] = useState<number | null>(null);
@@ -105,13 +110,15 @@ export function CaptureEditor({
     setTime(0);
     setPlaying(false);
     setSelected(null);
+    setTapsSelected(false);
     setSelectedSegment(null);
     setStart("0");
     setEnd("");
     setColor(palette[0]);
     setPadding(48);
     setAspect("native");
-    setStyled(false);
+    setStyled(true);
+    setVolume(1);
     Promise.all([
       invoke<Info>("media_info", { path: capture.path }),
       invoke<Edits>("load_edits", { path: capture.path }),
@@ -138,7 +145,7 @@ export function CaptureEditor({
               setTime(recoveryTime.current);
               if (typeof saved.start === "string") setStart(saved.start);
               if (typeof saved.end === "string") setEnd(saved.end);
-              setStyled(saved.styled === true);
+              if(Number.isFinite(saved.volume))setVolume(clamp(saved.volume,0,1));
               if (video.current.readyState >= 2)
                 video.current.currentTime = recoveryTime.current;
             }
@@ -251,13 +258,14 @@ export function CaptureEditor({
           start,
           end,
           styled,
+          volume,
           time,
         }),
       );
     } catch {
       setSaveStatus("Workspace settings could not be saved");
     }
-  }, [loaded, capture.path, color, aspect, padding, start, end, styled, time]);
+  }, [loaded, capture.path, color, aspect, padding, start, end, styled, time, volume]);
   function geometry(t: number) {
     const s = state.current;
     if (!s.styled)
@@ -356,7 +364,7 @@ export function CaptureEditor({
         for (const tap of state.current.styled
           ? state.current.edits.taps
           : []) {
-          if (t >= tap.time && t < tap.time + 0.45) {
+          if (t >= tap.time && t < tap.time + (tap.duration??0.45)) {
             const x =
                 g.dx +
                 ((tap.x * state.current.info.width - g.sx) / g.sw) * g.dw,
@@ -368,10 +376,14 @@ export function CaptureEditor({
             ctx.rect(g.dx, g.dy, g.dw, g.dh);
             ctx.clip();
             ctx.beginPath();
-            ctx.arc(x, y, (30 * g.dw) / g.sw, 0, Math.PI * 2);
-            ctx.fillStyle = "#e1bb9844";
+            const pulse=(t-tap.time)/(tap.duration??.45),style=state.current.edits.tapStyle;
+            const radius=style?.size??30,color=style?.color??'#ffe0bb';
+            ctx.globalAlpha=1-pulse;
+            ctx.shadowColor=color;ctx.shadowBlur=(style?.bloom??.5)*radius*2*g.dw/g.sw;
+            ctx.arc(x, y, (radius*(.75+pulse*.5) * g.dw) / g.sw, 0, Math.PI * 2);
+            ctx.fillStyle = color+'44';
             ctx.fill();
-            ctx.strokeStyle = "#ffe0bbdd";
+            ctx.strokeStyle = color;
             ctx.lineWidth = (5 * g.dw) / g.sw;
             ctx.stroke();
             ctx.restore();
@@ -482,7 +494,7 @@ export function CaptureEditor({
     setMode("none");
   }
   async function toggle() {
-    if (playing) {
+    if (!video.current.paused) {
       video.current.pause();
       setPlaying(false);
     } else {
@@ -494,6 +506,21 @@ export function CaptureEditor({
       }
     }
   }
+  useEffect(() => {
+    const onSpace = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || event.defaultPrevented || event.isComposing ||
+          event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement;
+      if (target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role=dialog]")) return;
+      const root = editorRoot.current;
+      if (!root?.getClientRects().length || (!root.contains(target) && target !== document.body)) return;
+      if (capture.kind !== "video" || !mediaReady || exporting) return;
+      event.preventDefault();
+      if (!event.repeat) void toggle();
+    };
+    window.addEventListener("keydown", onSpace);
+    return () => window.removeEventListener("keydown", onSpace);
+  }, [capture.kind, mediaReady, exporting, onError]);
   const update = (key: string, value: number) => {
     if (!selected) return;
     if (!Number.isFinite(value)) return;
@@ -599,6 +626,7 @@ export function CaptureEditor({
           start: Number(start),
           end: end === "" ? null : Number(end),
           edits,
+          volume,
         },
       });
       setStatus(`Saved ${result.name}`);
@@ -786,6 +814,7 @@ export function CaptureEditor({
             <>
               <TimelineDock s={edits} duration={info.duration} time={time} playing={playing} mode={mode}
                 disabled={!mediaReady||exporting} canUndo={historyPosition.current>0} canRedo={historyPosition.current<editHistory.current.length-1}
+                tapsSelected={tapsSelected} onSelectTaps={()=>{setSelected(null);setSelectedSegment(null);setTapsSelected(true);setMode("none");setStyled(true);const panel=editorRoot.current?.querySelector<HTMLElement>("[aria-label=\"Tap appearance\"]");panel?.scrollIntoView({block: "nearest"});panel?.focus({preventScroll:true})}}
                 selected={selected?{kind:selected.kind==='tap'?'taps':'focus',index:selected.index}:null}
                 onUndo={()=>undoEdits(-1)} onRedo={()=>undoEdits(1)} onToggle={()=>void toggle()} onSeek={seek}
                 onSelect={p=>{setSelected(p?{kind:p.kind==='taps'?'tap':'focus',index:p.index}:null);setStyled(true)}}
@@ -864,6 +893,7 @@ export function CaptureEditor({
           onChangeCapture={() => setStyled(true)}
         >
           <h3 className="editor-inspector-title">Composition</h3>
+          {capture.kind!=="image"&&<EditAppearance volume={volume} onVolume={setVolume} audio={info.audio} style={edits.tapStyle} onStyle={tapStyle=>{setEdits({...edits,tapStyle});setStyled(true)}} count={edits.taps.length} disabled={exporting} hidden={!styled} onShow={()=>setStyled(true)}/>}
           <div className="editor-controls">
             <div>
               <h3>Background</h3>

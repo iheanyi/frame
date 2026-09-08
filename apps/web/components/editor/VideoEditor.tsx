@@ -77,9 +77,16 @@ export function VideoEditor({ url, takeId }: { url: string; takeId?: string }) {
   }
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (!(e.key === 'Delete' || e.key === 'Backspace') || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.defaultPrevented || e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement;
-      if (target.closest('input,textarea,select,[contenteditable=true]') || !root.current?.getClientRects().length) return;
+      if (target.closest("input,textarea,select,[contenteditable]:not([contenteditable='false']),[role=dialog]") || !root.current?.getClientRects().length) return;
+      if (e.code === 'Space') {
+        if ((!root.current.contains(target) && target !== document.body) || progress !== null || !video.current || video.current.readyState < 2) return;
+        e.preventDefault();
+        if (!e.repeat) void toggle();
+        return;
+      }
+      if (!(e.key === 'Delete' || e.key === 'Backspace')) return;
       if (selected && progress === null) { e.preventDefault(); removeSelected(); }
     };
     window.addEventListener('keydown', key);

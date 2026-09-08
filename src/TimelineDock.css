@@ -10,3 +10,7 @@
 }
 .timeline-editor .desktop-timeline .timeline-scroll{overflow-x:auto}
 .timeline-editor .editor-timeline-panel:has(.desktop-timeline){padding:0;min-width:0}
+.timeline-editor .desktop-timeline .tap-track-button{display:flex;align-items:center;gap:7px;padding:0 0 0 14px;margin:0;border:0;border-radius:0;background:transparent;color:#99979e;font-size:11px;min-height:36px;text-align:left}
+.timeline-editor .desktop-timeline .tap-track-button:hover{background:#ffffff08;color:#e6d5c4}
+.timeline-editor .desktop-timeline .tap-track-button[aria-pressed=true]{background:#d9b89418;color:#e6c6a5;box-shadow:inset 2px 0 #d9b894}
+.timeline-editor .desktop-timeline .sequence-row.track-selected{background-color:#d9b8940c;box-shadow:inset 0 1px #d9b89430,inset 0 -1px #d9b89430}

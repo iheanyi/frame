@@ -1,6 +1,6 @@
-import { clamp, focusCrop, retainedRanges, type Focus, type Tap, type Segment } from "../../lib/editor-core.ts";
+import { clamp, focusCrop, retainedRanges, type Focus, type Tap, type Segment, type TapStyle } from "../../lib/editor-core.ts";
 export { clamp, type Focus, type Tap } from "../../lib/editor-core.ts";
-export type Composition={width:number;height:number;padding:number;color:string;focus:Focus[];taps:Tap[];preset?:'native'|'portrait'|'landscape'|'square';volume?:number;fade?:number;segments?:Segment[]};
+export type Composition={width:number;height:number;padding:number;color:string;focus:Focus[];taps:Tap[];tapStyle?:TapStyle;preset?:'native'|'portrait'|'landscape'|'square';volume?:number;fade?:number;segments?:Segment[]};
 export function canvasSize(s:Composition){
  if(!s.width||!s.height)return {w:0,h:0};
  const baseW=s.width+2*s.padding,baseH=s.height+2*s.padding;
@@ -27,8 +27,10 @@ export function drawFrame(canvas:HTMLCanvasElement|OffscreenCanvas,image:CanvasI
  let x=g.dx+(tap.x*s.width-g.sx)/g.sw*g.dw,y=g.dy+(tap.y*s.height-g.sy)/g.sh*g.dh;
  const distance=Math.min(s.width,s.height)*.2,dir=tap.direction??'up';
  const dx=swipe?(dir==='left'?-distance:dir==='right'?distance:0):0,dy=swipe?(dir==='up'?-distance:dir==='down'?distance:0):0;
- c.globalAlpha=1-(swipe?progress*.5:pulse);c.strokeStyle='#ffe0bb';c.lineWidth=4*g.dw/g.sw;
+ const color=s.tapStyle?.color??'#ffe0bb',radius=s.tapStyle?.size??30,bloom=s.tapStyle?.bloom??.5;
+ c.globalAlpha=1-(swipe?progress*.5:pulse);c.strokeStyle=color;c.lineWidth=4*g.dw/g.sw;
+ c.shadowColor=color;c.shadowBlur=bloom*radius*2*g.dw/g.sw;
  if(swipe){c.beginPath();c.moveTo(x,y);c.lineTo(x+dx*progress,y+dy*progress);c.stroke();x+=dx*progress;y+=dy*progress}
- c.beginPath();c.arc(x,y,(22+pulse*11)*g.dw/g.sw,0,Math.PI*2);c.fillStyle='#e1bb9866';c.fill();c.stroke();
+ c.beginPath();c.arc(x,y,radius*(.75+pulse*.5)*g.dw/g.sw,0,Math.PI*2);c.fillStyle=color+'44';c.fill();c.stroke();
  }c.restore();return g;
 }

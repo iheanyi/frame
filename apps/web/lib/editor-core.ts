@@ -1,8 +1,9 @@
 // Generated from Frame desktop packages/editor-core/index.ts. Do not edit.
-// source-sha256: 89e295ea3eb7df9d41900826d9a5379e3caafa5c6d5ac21489c8fe866b9debe3
+// source-sha256: 96ae256f4eb99ec516bf868d80ad3dcfd84534d7a756221850f2696efd792601
 /** Frame's platform-independent edit model. No DOM, transport, or persistence. */
 export type TimedFocus = { time: number; duration: number };
 export type Focus = TimedFocus & { x: number; y: number; zoom: number };
+export type TapStyle = { color?: string; size?: number; bloom?: number };
 export type Tap = {
   time: number;
   x: number;

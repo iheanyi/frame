@@ -21,7 +21,8 @@ self.onmessage=async({data}:{data:{blob:Blob;s:Composition;start:number;end:numb
   output=new Output({format:new WebMOutputFormat(),target});
   const canvas=new OffscreenCanvas(w,h);
   const videoSource=new CanvasSource(canvas,{codec,bitrate:Math.max(24000000,w*h*5)});
-  output.addVideoTrack(videoSource,{frameRate:30});
+  const fps=60;
+  output.addVideoTrack(videoSource,{frameRate:fps});
   const audioSource=audio?new AudioSampleSource({codec:'opus',bitrate:192000}):undefined;
   if(audioSource)output.addAudioTrack(audioSource);
   await output.start();
@@ -37,17 +38,17 @@ self.onmessage=async({data}:{data:{blob:Blob;s:Composition;start:number;end:numb
     let lastFrame=initial.value;
     let offset=0;
     for(const range of ranges){
-     const count=Math.ceil((range.end-range.start)*30);
-     function* timestamps(){for(let i=0;i<count;i++)yield Math.max(firstTimestamp,range.start+i/30)}
+     const count=Math.ceil((range.end-range.start)*fps);
+     function* timestamps(){for(let i=0;i<count;i++)yield Math.max(firstTimestamp,range.start+i/fps)}
      let i=0;
      for await(const frame of sink.canvasesAtTimestamps(timestamps())){
       // Phone recordings may have timestamp gaps while the screen is static.
       // Hold the last decoded picture across those gaps, including the tail.
       if(frame)lastFrame=frame;
-      const t=range.start+i/30,duration=Math.min(1/30,range.end-t);
+      const t=range.start+i/fps,duration=Math.min(1/fps,range.end-t);
       drawFrame(canvas,lastFrame.canvas,s,t);
-      await videoSource.add(offset+i/30,duration);
-      i++;self.postMessage({type:'progress',value:Math.min(.98,(offset+i/30)/total*.98)});
+      await videoSource.add(offset+i/fps,duration);
+      i++;self.postMessage({type:'progress',value:Math.min(.98,(offset+i/fps)/total*.98)});
      }
      offset+=range.end-range.start;
     }
