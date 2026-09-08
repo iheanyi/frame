@@ -310,7 +310,6 @@ export function VideoEditor({ url, takeId }: { url: string; takeId?: string }) {
         abort.current.signal,
         setProgress,
       );
-      setResult(URL.createObjectURL(blob));
       try {
         await saveTake(blob, {
           kind:'export',
@@ -322,6 +321,7 @@ export function VideoEditor({ url, takeId }: { url: string; takeId?: string }) {
       } catch (e) {
         setError('Export is ready but local save failed: ' + String(e));
       }
+      setResult(URL.createObjectURL(blob));
     } catch (e) {
       setError(String(e));
     } finally {
