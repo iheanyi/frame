@@ -11,6 +11,8 @@ export async function copyTransport(source,destination,platform=process.platform
  // Keep npm's relative links inside the bundle, including on repeat builds.
  return cp(source,destination,{recursive:true,verbatimSymlinks:true,filter:file=>{
   if(file.endsWith('.test.mjs'))return false;
+  // Official Linux Node distributions use glibc, not Alpine's musl libc.
+  if(platform==='linux'&&path.basename(file).split('.').includes('musl'))return false;
   const parts=path.relative(source,file).split(path.sep),index=parts.indexOf('prebuilds');
   if(index<0||!parts[index+1])return true;
   const [os,arches]=parts[index+1].split('-');

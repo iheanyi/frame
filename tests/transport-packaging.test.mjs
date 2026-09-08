@@ -27,9 +27,11 @@ test('bundles only matching USB binaries and removes stale architectures on a re
  for(const tuple of ['linux-x64','linux-ia32','darwin-x64+arm64','win32-x64']){
   const dir=path.join(source,'node_modules/usb/prebuilds',tuple);
   await mkdir(dir,{recursive:true});await writeFile(path.join(dir,'node.napi.node'),'fixture');
+  if(tuple==='linux-x64')await writeFile(path.join(dir,'node.napi.musl.node'),'incompatible libc');
  }
  await copyTransport(source,dest,'linux','x64');
  assert.deepEqual(await readdir(path.join(dest,'node_modules/usb/prebuilds')),['linux-x64']);
+ assert.deepEqual(await readdir(path.join(dest,'node_modules/usb/prebuilds/linux-x64')),['node.napi.node']);
  await copyTransport(source,dest,'darwin','arm64');
  assert.deepEqual(await readdir(path.join(dest,'node_modules/usb/prebuilds')),['darwin-x64+arm64']);
 });
