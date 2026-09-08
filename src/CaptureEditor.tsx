@@ -88,7 +88,6 @@ export function CaptureEditor({
   state.current = { info, edits, color, aspect, padding, time, styled };
   useEffect(() => {
     let live = true;
-    let url = "";
     let disposePrimer: (() => void) | undefined;
     let primed = false;
     // WKWebView's media pipeline needs a document-connected video surface.
@@ -168,19 +167,7 @@ export function CaptureEditor({
       };
       im.onerror = () => setMediaError("Could not load image.");
       im.src = convertFileSrc(capture.path);
-    } else if (capture.bytes > 512 * 1024 * 1024) {
-      setMediaError(
-        "This clip is larger than the 512 MB preview limit. You can still export it or open the original.",
-      );
     } else {
-      fetch(convertFileSrc(capture.path))
-        .then((r) => {
-          if (!r.ok) throw Error("Could not read video");
-          return r.blob();
-        })
-        .then((b) => {
-          if (live) {
-            url = URL.createObjectURL(new Blob([b], { type: "video/mp4" }));
             const v = video.current;
             v.onloadeddata = () => {
               if (live) {
@@ -207,13 +194,9 @@ export function CaptureEditor({
               decodedRevision.current += 1;
             };
             // Install handlers before assigning src; cached clips can load fast.
-            v.src = url;
+            v.crossOrigin = "anonymous";
+            v.src = convertFileSrc(capture.path);
             v.load();
-          }
-        })
-        .catch((e) => {
-          if (live) setMediaError(String(e));
-        });
     }
     return () => {
       live = false;
@@ -227,7 +210,6 @@ export function CaptureEditor({
       video.current.removeAttribute("src");
       video.current.load();
       decoder.remove();
-      if (url) URL.revokeObjectURL(url);
       image.current = null;
       cancelAnimationFrame(frame.current);
     };
@@ -507,20 +489,33 @@ export function CaptureEditor({
     }
   }
   useEffect(() => {
-    const onSpace = (event: KeyboardEvent) => {
-      if (event.code !== "Space" || event.defaultPrevented || event.isComposing ||
-          event.metaKey || event.ctrlKey || event.altKey) return;
+    const onShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.altKey) return;
       const target = event.target as HTMLElement;
       if (target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role=dialog]")) return;
       const root = editorRoot.current;
       if (!root?.getClientRects().length || (!root.contains(target) && target !== document.body)) return;
-      if (capture.kind !== "video" || !mediaReady || exporting) return;
+      if (exporting) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (!event.repeat) undoEdits(event.shiftKey ? 1 : -1);
+        return;
+      }
+      if (event.metaKey || event.ctrlKey) return;
+      if (event.key === "Delete" || event.key === "Backspace") {
+        if (!selected && selectedSegment === null) return;
+        event.preventDefault();
+        if (!event.repeat) { if (selected) removeSelected(); else removeSegment(); }
+        return;
+      }
+      if (event.code !== "Space") return;
+      if (capture.kind !== "video" || !mediaReady) return;
       event.preventDefault();
       if (!event.repeat) void toggle();
     };
-    window.addEventListener("keydown", onSpace);
-    return () => window.removeEventListener("keydown", onSpace);
-  }, [capture.kind, mediaReady, exporting, onError]);
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, [capture.kind, mediaReady, exporting, onError, selected, selectedSegment, edits, info.duration]);
   const update = (key: string, value: number) => {
     if (!selected) return;
     if (!Number.isFinite(value)) return;
