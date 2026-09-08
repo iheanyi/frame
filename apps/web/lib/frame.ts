@@ -1,3 +1,4 @@
+import {createAudioRouting} from './audio-routing';
 import { Adb, AdbDaemonTransport } from '@yume-chan/adb';
 import { AdbDaemonWebUsbDeviceManager } from '@yume-chan/adb-daemon-webusb';
 import AdbWebCredentialStore from '@yume-chan/adb-credential-web';
@@ -7,11 +8,12 @@ import { ReadableStream, WritableStream } from '@yume-chan/stream-extra';
 
 type Callbacks={dimensions:(width:number,height:number)=>void;status:(s:string)=>void;error:(s:string)=>void;saved:(b:Blob)=>void;disconnected:()=>void};
 export class FrameSession {
+ private routing?:ReturnType<typeof createAudioRouting>; private monitoring=false;
  private microphone?:MediaStream; private deviceGain?:GainNode; private micGain?:GainNode; private finalizing=false;
  private usb?:{close:()=>Promise<void>}; private adb?:Adb; private client?:Awaited<ReturnType<typeof AdbScrcpyClient.start>>; private decoder?:WebCodecsVideoDecoder; private context?:AudioContext; private destination?:MediaStreamAudioDestinationNode; private recorder?:MediaRecorder; private chunks:Blob[]=[]; private closed=false; private nextAudio=0; private recordingStream?:MediaStream; private hasFrame=false;
  constructor(private canvas:HTMLCanvasElement,private callbacks:Callbacks){}
  async connect(withAudio:boolean,withMicrophone=false){
-  if(withAudio||withMicrophone){this.context=new AudioContext({sampleRate:48000});await this.context.resume();this.destination=this.context.createMediaStreamDestination();this.deviceGain=this.context.createGain();this.deviceGain.connect(this.destination);this.micGain=this.context.createGain();this.micGain.connect(this.destination);}
+  if(withAudio||withMicrophone){this.context=new AudioContext({sampleRate:48000});await this.context.resume();this.routing=createAudioRouting(this.context);this.destination=this.routing.destination;this.deviceGain=this.routing.device;this.micGain=this.routing.microphone;this.routing.setMonitoring(this.monitoring);}
 
   let deviceName="Android connected";
   const manager=AdbDaemonWebUsbDeviceManager.BROWSER;if(!manager)throw new Error('Use desktop Chrome or Edge with WebUSB support.');
@@ -41,7 +43,7 @@ export class FrameSession {
   this.decoder=new WebCodecsVideoDecoder({codec:video.metadata.codec,renderer:{setSize:(width:number,height:number)=>{this.canvas.width=width;this.canvas.height=height;this.callbacks.dimensions(width,height)},draw:(frame:VideoFrame)=>{ctx.drawImage(frame,0,0,this.canvas.width,this.canvas.height);this.hasFrame=true;}}});
   void video.stream.pipeTo(this.decoder.writable).then(()=>this.fail('The phone stopped screen capture. Reconnect to continue.')).catch(e=>this.fail('Screen capture stopped: '+String(e)));
   if(withAudio){this.callbacks.status('Waiting for device audio');const audio=await this.client.audioStream;if(!audio||audio.type!=='success')throw new Error('Device audio is unavailable. Android 11+ is required. Unlock your phone and retry, or turn device audio off.');
-   void audio.stream.pipeTo(new WritableStream({write:packet=>{if(packet.type!=='data'||!this.context||!this.destination)return;const samples=packet.data;const frames=Math.floor(samples.length/4);if(!frames)return;const buffer=this.context.createBuffer(2,frames,48000);const view=new DataView(samples.buffer,samples.byteOffset,samples.byteLength);for(let channel=0;channel<2;channel++){const output=buffer.getChannelData(channel);for(let i=0;i<frames;i++)output[i]=view.getInt16(i*4+channel*2,true)/32768}const source=this.context.createBufferSource();source.buffer=buffer;source.connect(this.deviceGain!);if(this.nextAudio>this.context.currentTime+.25)this.nextAudio=this.context.currentTime+.025;this.nextAudio=Math.max(this.nextAudio,this.context.currentTime+0.025);source.start(this.nextAudio);this.nextAudio+=frames/48000;}})).catch(e=>this.fail('Device audio stopped: '+String(e)));
+   void audio.stream.pipeTo(new WritableStream({write:packet=>{if(packet.type!=='data'||!this.context||!this.destination)return;const samples=packet.data;const frames=Math.floor(samples.length/4);if(!frames)return;const buffer=this.context.createBuffer(2,frames,48000);const view=new DataView(samples.buffer,samples.byteOffset,samples.byteLength);for(let channel=0;channel<2;channel++){const output=buffer.getChannelData(channel);for(let i=0;i<frames;i++)output[i]=view.getInt16(i*4+channel*2,true)/32768}const source=this.context.createBufferSource();source.buffer=buffer;source.connect(this.routing!.input);if(this.nextAudio>this.context.currentTime+.25)this.nextAudio=this.context.currentTime+.025;this.nextAudio=Math.max(this.nextAudio,this.context.currentTime+0.025);source.start(this.nextAudio);this.nextAudio+=frames/48000;}})).catch(e=>this.fail('Device audio stopped: '+String(e)));
   }
   this.callbacks.status(deviceName);
  }
@@ -49,5 +51,7 @@ export class FrameSession {
  startRecording(){if(!this.client||!this.hasFrame)throw new Error('Wait for the live preview before recording.');if(this.finalizing)throw Error('Finishing the previous take. Please wait.');if(this.recorder?.state==='recording')return;const stream=this.canvas.captureStream(30);if(this.destination)for(const track of this.destination.stream.getAudioTracks())stream.addTrack(track.clone());this.recordingStream=stream;const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));if(!mime)throw new Error('This browser cannot record WebM. Try desktop Chrome.');const chunks:Blob[]=[];this.recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:Math.max(24000000,this.canvas.width*this.canvas.height*5)});this.recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};this.recorder.onerror=()=>this.fail('Recording failed. Reconnect your phone and try again.');this.recorder.onstop=()=>{const blob=new Blob(chunks,{type:mime});stream.getTracks().forEach(t=>t.stop());this.finalizing=false;if(blob.size)this.callbacks.saved(blob)};this.recorder.start(1000)}
  stopRecording(){if(this.recorder&&this.recorder.state!=='inactive'){this.finalizing=true;this.recorder.stop()}}
  setVolumes(device:number,mic:number){if(this.context){this.deviceGain?.gain.setTargetAtTime(device,this.context.currentTime,.02);this.micGain?.gain.setTargetAtTime(mic,this.context.currentTime,.02)}}
+ setMonitoring(enabled:boolean){this.monitoring=enabled;this.routing?.setMonitoring(enabled);if(enabled)void this.context?.resume().catch(e=>this.callbacks.error("Audio monitoring could not resume: "+String(e)));}
+ audioLevel(){return this.closed?0:this.routing?.level()??0;}
  async close(){if(this.closed)return;this.closed=true;this.stopRecording();this.microphone?.getTracks().forEach(t=>t.stop());try{await this.client?.close()}catch{}try{this.decoder?.dispose()}catch{}try{await this.adb?.close()}catch{}try{await this.context?.close()}catch{}try{await this.usb?.close()}catch{}}
 }
