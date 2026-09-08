@@ -42,3 +42,4 @@ src-tauri/gen/
 .vinext/
 .next/
 coverage/
+src-tauri/resources/.transport-previous-*/
