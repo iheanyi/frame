@@ -3,11 +3,18 @@ import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {copyTransport} from './copy-transport.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const resources=path.join(root,'src-tauri/resources');
 try { await access(path.join(root,'transport/node_modules/usb/package.json')); }
-catch { execFileSync(process.platform==='win32'?'npm.cmd':'npm',['ci','--omit=dev'],{cwd:path.join(root,'transport'),stdio:'inherit'}); }
+catch {
+ const options={cwd:path.join(root,'transport'),stdio:'inherit'};
+ // npm's JS entry point avoids spawning a .cmd file directly on Windows.
+ if(process.env.npm_execpath)execFileSync(process.execPath,[process.env.npm_execpath,'ci','--omit=dev'],options);
+ else if(process.platform==='win32')execFileSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c','npm ci --omit=dev'],options);
+ else execFileSync('npm',['ci','--omit=dev'],options);
+}
 const version='v22.23.2';
 const platform=process.platform, arch=process.arch;
 const name=`node-${version}-${platform==='win32'?'win':platform}-${arch}`;
@@ -28,6 +35,6 @@ const executable=platform==='win32'?'node.exe':'node';
 await cp(path.join(cache,name,platform==='win32'?'node.exe':'bin/node'),path.join(resources,'tango-runtime',executable));
 await chmod(path.join(resources,'tango-runtime',executable),0o755);
 await cp(path.join(cache,name,'LICENSE'),path.join(resources,'tango-runtime','LICENSE'));
-await cp(path.join(root,'transport'),path.join(resources,'tango-helper'),{recursive:true,filter:source=>!source.endsWith('.test.mjs')});
+await copyTransport(path.join(root,'transport'),path.join(resources,'tango-helper'));
 await writeFile(path.join(resources,'tango-runtime','build.json'),JSON.stringify({version,platform,arch,sha256:actual},null,2));
 console.log(`Prepared Tango runtime ${version} for ${platform}/${arch}`);
