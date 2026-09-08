@@ -1,0 +1,27 @@
+{
+  "name": "frame-tango-transport",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.mjs",
+  "scripts": {
+    "test": "node --test *.test.mjs",
+    "start": "node index.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "Apache-2.0",
+  "type": "module",
+  "dependencies": {
+    "@yume-chan/adb": "2.6.4",
+    "@yume-chan/adb-daemon-webusb": "2.3.2",
+    "@yume-chan/adb-scrcpy": "2.3.2",
+    "@yume-chan/scrcpy": "2.3.0",
+    "@yume-chan/stream-extra": "2.6.1",
+    "mp4-muxer": "5.2.2",
+    "usb": "2.17.0"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}
