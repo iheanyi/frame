@@ -49,6 +49,7 @@ export function VideoEditor({ url, takeId }: { url: string; takeId?: string }) {
     [start, setStart] = useState(0),
     [end, setEnd] = useState(0);
   const [projectReady, setProjectReady] = useState(false);
+  useEffect(()=>()=>{abort.current?.abort()},[]);
   const history = useRef<{ s: Composition; start: number; end: number }[]>([]),
     position = useRef(-1),
     restoring = useRef(false);
@@ -524,7 +525,7 @@ export function VideoEditor({ url, takeId }: { url: string; takeId?: string }) {
           {progress !== null && (
             <>
               <p role="status">
-                Exporting {Math.round(progress * 100)}% · keep this tab visible
+                Exporting {Math.round(progress * 100)}% · you can switch tabs; keep Frame open
               </p>
               <Button onClick={() => abort.current?.abort()}>
                 Cancel export
@@ -532,7 +533,7 @@ export function VideoEditor({ url, takeId }: { url: string; takeId?: string }) {
             </>
           )}
           <p>
-            Export runs in real time and retains source audio. Your raw
+            Export runs locally in the background and retains source audio. Your raw
             recording stays separate.
           </p>
 </div>
@@ -547,7 +548,7 @@ export function VideoEditor({ url, takeId }: { url: string; takeId?: string }) {
           <video controls src={result} />
           <Button
             onClick={async () => {
-              try {const blob=await fetch(result).then(r=>r.blob());setSaveStatus(await saveFile(blob,'Frame-edited'))}catch(e){setError(String(e))}
+              try {setSaveStatus('Choose where to save…');setSaveStatus(await saveFile(()=>fetch(result).then(r=>r.blob()),'Frame-edited','video/webm'))}catch(e){setError(String(e))}
             }}
           >
             Save edited video

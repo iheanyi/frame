@@ -11,7 +11,7 @@
     "start": "vinext start",
     "lint": "oxlint",
     "format": "oxfmt",
-    "test:editor": "node --experimental-strip-types --test components/editor/composition.test.mjs lib/audio-routing.test.mjs"
+    "test:editor": "node --experimental-strip-types --test components/editor/composition.test.mjs components/editor/export-timing.test.mjs lib/audio-routing.test.mjs lib/save-file.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
@@ -30,6 +30,7 @@
     "embla-carousel-react": "8.5.2",
     "input-otp": "1.4.2",
     "lucide-react": "1.31.0",
+    "mediabunny": "^1.55.7",
     "react": "19.2.6",
     "react-day-picker": "9.8.1",
     "react-dom": "19.2.6",
