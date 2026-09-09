@@ -811,6 +811,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             originals::copy_original_image,
+            originals::copy_screen,
             originals::copy_capture_files,
             originals::save_original,
             editor::media_info,

@@ -306,19 +306,29 @@ export default function App() {
       setSelected(c);
     });
   }
+  async function copyShot() {
+    await action("Copying screen", async () => {
+      await invoke("copy_screen", { serial });
+      setNotice("Screen copied — paste anywhere.");
+    });
+  }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
       if (
         (e.metaKey || e.ctrlKey) &&
         e.shiftKey &&
-        ["r", "s"].includes(e.key.toLowerCase())
+        ["r", "s", "c"].includes(key)
       ) {
         e.preventDefault();
         if (busy || page !== "studio") return;
-        if (e.key.toLowerCase() === "r") {
+        if (key === "r") {
           if (sessionRef.current.active) void stop();
           else if (ready) void start(true);
-        } else if (ready) void shot();
+        } else if (ready) {
+          if (key === "s") void shot();
+          else void copyShot();
+        }
       }
     };
     window.addEventListener("keydown", onKey);
@@ -524,6 +534,14 @@ export default function App() {
                     <Button onClick={shot} disabled={!ready || !!busy}>
                       <CameraIcon />
                       Screenshot
+                    </Button>
+                    <Button
+                      onClick={copyShot}
+                      disabled={!ready || !!busy}
+                      title="Copy a native-resolution screenshot to the clipboard without saving it"
+                    >
+                      <ClipboardIcon />
+                      Copy screen
                     </Button>
                     <Button
                       className="mirror-button"
