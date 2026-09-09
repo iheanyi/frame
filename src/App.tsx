@@ -315,7 +315,11 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && ["r", "s", "c"].includes(key)) {
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        ["r", "s", "c"].includes(key)
+      ) {
         e.preventDefault();
         if (busy || page !== "studio") return;
         if (key === "r") {
